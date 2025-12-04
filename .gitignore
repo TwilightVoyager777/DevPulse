@@ -38,3 +38,14 @@ scripts/.seed_progress.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+.coverage
+.pytest_cache/
+htmlcov/
+frontend/coverage/
+backend/build/reports/
