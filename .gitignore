@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.local
+*.env
+
+# Java / Gradle
+backend/build/
+backend/.gradle/
+*.jar
+*.war
+*.class
+*.ijar
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+ai-worker/.cache/
+sentence_transformers_cache/
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# Seed progress
+scripts/.seed_progress.json
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
