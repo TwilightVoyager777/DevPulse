@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-worker
+  namespace: devpulse
+  labels:
+    app: ai-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ai-worker
+    spec:
+      containers:
+        - name: ai-worker
+          image: ghcr.io/YOUR_GITHUB_USERNAME/devpulse-ai-worker:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: devpulse-config
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: devpulse-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: devpulse-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)"
+            - name: REDIS_URL
+              value: "redis://$(REDIS_HOST):$(REDIS_PORT)"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: devpulse-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
