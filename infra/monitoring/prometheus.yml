@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: devpulse
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: devpulse-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['backend:8080']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: backend
+
+  - job_name: devpulse-ai-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ai-worker:8000']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: ai-worker
