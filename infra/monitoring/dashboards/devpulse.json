@@ -1,0 +1,161 @@
+{
+  "annotations": {"list": []},
+  "description": "DevPulse platform monitoring — API, Kafka, AI Worker, document indexing",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["devpulse"],
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {},
+  "title": "DevPulse",
+  "uid": "devpulse-main",
+  "version": 1,
+  "panels": [
+    {"collapsed": false, "id": 100, "title": "Overview", "type": "row", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}},
+    {
+      "id": 1, "title": "API Request Rate (req/s)", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(rate(devpulse_api_request_total[5m])) by (method, endpoint)", "legendFormat": "{{method}} {{endpoint}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 1},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"lineWidth": 2}}, "overrides": []},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+    {
+      "id": 2, "title": "API Error Rate (%)", "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "100 * sum(rate(devpulse_api_request_total{status=~\"5..\"}[5m])) / sum(rate(devpulse_api_request_total[5m]))", "legendFormat": "error %", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 4, "x": 8, "y": 1},
+      "fieldConfig": {"defaults": {"unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"}
+    },
+    {
+      "id": 3, "title": "Active SSE Connections", "type": "gauge",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "devpulse_active_sse_connections", "legendFormat": "connections", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 4, "x": 12, "y": 1},
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
+    },
+    {
+      "id": 4, "title": "Circuit Breaker State", "type": "state-timeline",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "devpulse_circuit_breaker_state", "legendFormat": "{{name}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 1},
+      "fieldConfig": {"defaults": {"custom": {"lineWidth": 0, "fillOpacity": 70}, "mappings": [{"type": "value", "options": {"0": {"text": "CLOSED", "color": "green"}, "1": {"text": "OPEN", "color": "red"}, "2": {"text": "HALF_OPEN", "color": "yellow"}}}]}, "overrides": []}
+    },
+    {"collapsed": false, "id": 101, "title": "Latency", "type": "row", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 9}},
+    {
+      "id": 5, "title": "API Latency P50 / P95 / P99", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(devpulse_api_latency_seconds_bucket[5m])) by (le, endpoint))", "legendFormat": "p50 {{endpoint}}", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum(rate(devpulse_api_latency_seconds_bucket[5m])) by (le, endpoint))", "legendFormat": "p95 {{endpoint}}", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum(rate(devpulse_api_latency_seconds_bucket[5m])) by (le, endpoint))", "legendFormat": "p99 {{endpoint}}", "refId": "C"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+    },
+    {
+      "id": 6, "title": "Retrieval Method Avg Latency", "type": "barchart",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "rate(devpulse_retrieval_latency_seconds_sum[5m]) / rate(devpulse_retrieval_latency_seconds_count[5m])", "legendFormat": "{{method}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 10},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+    },
+    {
+      "id": 7, "title": "LLM Latency Distribution", "type": "histogram",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "rate(devpulse_llm_latency_seconds_bucket[5m])", "legendFormat": "{{le}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 10},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+    },
+    {"collapsed": false, "id": 102, "title": "Kafka", "type": "row", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 18}},
+    {
+      "id": 8, "title": "Kafka Consumer Lag", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "devpulse_kafka_consumer_lag", "legendFormat": "{{topic}} [p{{partition}}]", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 10, "x": 0, "y": 19},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    },
+    {
+      "id": 9, "title": "Kafka Message Rate (produced vs consumed)", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(rate(devpulse_kafka_messages_produced_total[5m])) by (topic)", "legendFormat": "produced {{topic}}", "refId": "A"},
+        {"expr": "sum(rate(devpulse_kafka_messages_consumed_total[5m])) by (topic, status)", "legendFormat": "consumed {{topic}} [{{status}}]", "refId": "B"}
+      ],
+      "gridPos": {"h": 8, "w": 10, "x": 10, "y": 19},
+      "fieldConfig": {"defaults": {"unit": "mps"}, "overrides": []}
+    },
+    {
+      "id": 10, "title": "DLQ Backlog", "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(devpulse_kafka_consumer_lag{topic=~\".*-dlq\"}) or vector(0)", "legendFormat": "DLQ backlog", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 4, "x": 20, "y": 19},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "background", "reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {"collapsed": false, "id": 103, "title": "AI", "type": "row", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 27}},
+    {
+      "id": 11, "title": "LLM Token Usage (prompt vs completion)", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(devpulse_llm_tokens_total{type=\"prompt\"}[5m])", "legendFormat": "prompt tokens/s", "refId": "A"},
+        {"expr": "rate(devpulse_llm_tokens_total{type=\"completion\"}[5m])", "legendFormat": "completion tokens/s", "refId": "B"}
+      ],
+      "gridPos": {"h": 8, "w": 10, "x": 0, "y": 28},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"fillOpacity": 20, "stacking": {"mode": "normal"}}}, "overrides": []}
+    },
+    {
+      "id": 12, "title": "Estimated LLM Cost (USD total)", "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "devpulse_llm_cost_usd_total", "legendFormat": "total", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 4, "x": 10, "y": 28},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 10}, {"color": "red", "value": 50}]}}, "overrides": []},
+      "options": {"colorMode": "background", "reduceOptions": {"calcs": ["lastNotNull"]}}
+    },
+    {
+      "id": 13, "title": "Guardrail Blocks by Reason (last 1h)", "type": "barchart",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(devpulse_guardrail_blocked_total[1h])) by (reason)", "legendFormat": "{{reason}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 5, "x": 14, "y": 28},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    },
+    {
+      "id": 14, "title": "BM25 Cache Hit Rate by Layer", "type": "piechart",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(devpulse_bm25_cache_hit_total[1h])) by (layer)", "legendFormat": "{{layer}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 5, "x": 19, "y": 28},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"pieType": "donut", "tooltip": {"mode": "single"}}
+    },
+    {"collapsed": false, "id": 104, "title": "Document Indexing", "type": "row", "gridPos": {"h": 1, "w": 24, "x": 0, "y": 36}},
+    {
+      "id": 15, "title": "Index Success vs Failed (last 1h)", "type": "barchart",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(devpulse_ingestion_documents_total[1h])) by (status)", "legendFormat": "{{status}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 37},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": [
+        {"matcher": {"id": "byName", "options": "failed"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]},
+        {"matcher": {"id": "byName", "options": "indexed"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]}
+      ]}
+    },
+    {
+      "id": 16, "title": "Chunks Generated per Hour", "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(devpulse_ingestion_chunks_total[1h]))", "legendFormat": "chunks/hour", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 37},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    },
+    {
+      "id": 17, "title": "Indexing Latency Distribution", "type": "histogram",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "rate(devpulse_ingestion_latency_seconds_bucket[5m])", "legendFormat": "{{le}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 37},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+    }
+  ]
+}
