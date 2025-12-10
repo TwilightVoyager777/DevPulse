@@ -8,6 +8,9 @@ plugins {
 group = 'com.devpulse'
 version = '0.0.1-SNAPSHOT'
 
+// Flyway 10+ required for flyway-database-postgresql module (not available in 9.x)
+ext['flyway.version'] = '10.10.0'
+
 java {
     sourceCompatibility = JavaVersion.VERSION_21
 }
@@ -36,6 +39,7 @@ dependencies {
 
     // Flyway
     implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql:10.10.0'
 
     // JWT RS256 (jjwt 0.12.x)
     implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
