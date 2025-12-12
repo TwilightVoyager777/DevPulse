@@ -21,9 +21,18 @@ public class JwtTokenProvider {
     private final int accessExpiryMinutes;
     private final int refreshExpiryDays;
 
-    public JwtTokenProvider(JwtProperties props) throws Exception {
-        this.privateKey = loadPrivateKey(props.getPrivateKey());
-        this.publicKey = loadPublicKey(props.getPublicKey());
+    public JwtTokenProvider(JwtProperties props) {
+        RSAPrivateKey priv;
+        RSAPublicKey pub;
+        try {
+            priv = loadPrivateKey(props.getPrivateKey());
+            pub = loadPublicKey(props.getPublicKey());
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                "Failed to load JWT RSA keys. Ensure JWT_PRIVATE_KEY and JWT_PUBLIC_KEY are set correctly.", e);
+        }
+        this.privateKey = priv;
+        this.publicKey = pub;
         this.accessExpiryMinutes = props.getAccessTokenExpiryMinutes();
         this.refreshExpiryDays = props.getRefreshTokenExpiryDays();
     }

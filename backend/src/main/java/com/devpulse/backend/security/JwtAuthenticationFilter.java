@@ -1,6 +1,7 @@
 package com.devpulse.backend.security;
 
 import com.devpulse.backend.service.RedisService;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,15 +32,36 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = extractToken(request);
 
-        if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
-            String jti = jwtTokenProvider.getJti(token);
-            if (!redisService.isTokenBlacklisted(jti)) {
-                String userId = jwtTokenProvider.getSubject(token);
+        if (StringUtils.hasText(token)) {
+            try {
+                Claims claims = jwtTokenProvider.parseClaims(token);
+
+                // Reject non-access tokens (e.g. refresh tokens used as bearer)
+                if (!"access".equals(claims.get("type", String.class))) {
+                    log.debug("Rejected token with type '{}' — only 'access' tokens allowed",
+                        claims.get("type", String.class));
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
+                String jti = claims.getId();
+                if (redisService.isTokenBlacklisted(jti)) {
+                    log.debug("Rejected blacklisted token jti={}", jti);
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
+                String userId = claims.getSubject();
                 UserDetails userDetails = userDetailsService.loadUserByUsername(userId);
                 UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                 auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(auth);
+
+            } catch (io.jsonwebtoken.JwtException | IllegalArgumentException e) {
+                log.debug("Invalid JWT token: {}", e.getMessage());
+            } catch (org.springframework.security.core.userdetails.UsernameNotFoundException e) {
+                log.debug("User not found for JWT subject: {}", e.getMessage());
             }
         }
 
