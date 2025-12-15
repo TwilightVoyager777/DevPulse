@@ -5,8 +5,10 @@ import com.devpulse.backend.model.User;
 import com.devpulse.backend.repository.UserRepository;
 import com.devpulse.backend.security.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -104,7 +106,9 @@ class AuthServiceTest {
 
         authService.logout("token");
 
-        verify(redisService).blacklistToken(eq("jti-abc"), anyLong());
+        ArgumentCaptor<Long> ttlCaptor = ArgumentCaptor.forClass(Long.class);
+        verify(redisService).blacklistToken(eq("jti-abc"), ttlCaptor.capture());
+        assertThat(ttlCaptor.getValue()).isBetween(800L, 900L);
     }
 
     @Test
@@ -112,8 +116,9 @@ class AuthServiceTest {
         UUID userId = UUID.randomUUID();
         User user = User.builder()
             .id(userId).email("r@t.com").displayName("R").role("USER").build();
-        when(jwtTokenProvider.validateToken("rt")).thenReturn(true);
-        when(jwtTokenProvider.getSubject("rt")).thenReturn(userId.toString());
+        Claims claims = mock(Claims.class);
+        when(claims.getSubject()).thenReturn(userId.toString());
+        when(jwtTokenProvider.parseClaims("rt")).thenReturn(claims);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(jwtTokenProvider.generateAccessToken(userId, "r@t.com")).thenReturn("new-at");
         when(jwtTokenProvider.generateRefreshToken(userId)).thenReturn("new-rt");
@@ -121,11 +126,12 @@ class AuthServiceTest {
         AuthResponse resp = authService.refreshToken(new RefreshRequest("rt"));
 
         assertThat(resp.accessToken()).isEqualTo("new-at");
+        assertThat(resp.refreshToken()).isEqualTo("new-rt");
     }
 
     @Test
     void refreshToken_invalid_throwsIllegalArgument() {
-        when(jwtTokenProvider.validateToken("bad-rt")).thenReturn(false);
+        when(jwtTokenProvider.parseClaims("bad-rt")).thenThrow(new JwtException("invalid"));
         assertThatThrownBy(() -> authService.refreshToken(new RefreshRequest("bad-rt")))
             .isInstanceOf(IllegalArgumentException.class);
     }

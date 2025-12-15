@@ -54,10 +54,13 @@ public class AuthService {
 
     public AuthResponse refreshToken(RefreshRequest req) {
         String token = req.refreshToken();
-        if (!jwtTokenProvider.validateToken(token)) {
+        io.jsonwebtoken.Claims claims;
+        try {
+            claims = jwtTokenProvider.parseClaims(token);
+        } catch (io.jsonwebtoken.JwtException | IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid or expired refresh token");
         }
-        UUID userId = UUID.fromString(jwtTokenProvider.getSubject(token));
+        UUID userId = UUID.fromString(claims.getSubject());
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
         return buildAuthResponse(user);
