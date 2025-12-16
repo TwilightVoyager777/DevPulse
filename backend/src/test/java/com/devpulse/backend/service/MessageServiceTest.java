@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -163,5 +164,59 @@ class MessageServiceTest {
         ArgumentCaptor<AiTaskEvent> captor = ArgumentCaptor.forClass(AiTaskEvent.class);
         verify(kafkaProducerService).publishAiTask(captor.capture());
         assertThat(captor.getValue().conversationHistory()).hasSize(10);
+    }
+
+    @Test
+    void sendMessageFallback_withCachedResponse_returnsTaskId() {
+        UUID sessionId   = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        UUID userId      = UUID.randomUUID();
+        UUID taskId      = UUID.randomUUID();
+
+        when(messageRepository.save(any())).thenAnswer(inv -> {
+            Message m = inv.getArgument(0);
+            m.setId(UUID.randomUUID());
+            return m;
+        });
+        when(taskRepository.save(any())).thenAnswer(inv -> {
+            Task t = inv.getArgument(0);
+            t.setId(taskId);
+            return t;
+        });
+        when(redisService.getCachedAiResponse(eq(workspaceId.toString()), anyString()))
+            .thenReturn("Cached: Redis is a key-value store.");
+
+        SendMessageResponse resp = messageService.sendMessageFallback(
+            workspaceId, sessionId, userId,
+            new MessageRequest("What is Redis?"), new RuntimeException("Circuit open"));
+
+        assertThat(resp.taskId()).isNotNull();
+        verify(taskRepository, atLeastOnce()).save(argThat(t -> "DONE".equals(t.getStatus())));
+    }
+
+    @Test
+    void sendMessageFallback_noCachedResponse_returnsDegradationMessage() {
+        UUID sessionId   = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        UUID userId      = UUID.randomUUID();
+
+        when(messageRepository.save(any())).thenAnswer(inv -> {
+            Message m = inv.getArgument(0);
+            m.setId(UUID.randomUUID());
+            return m;
+        });
+        when(taskRepository.save(any())).thenAnswer(inv -> {
+            Task t = inv.getArgument(0);
+            t.setId(UUID.randomUUID());
+            return t;
+        });
+        when(redisService.getCachedAiResponse(any(), any())).thenReturn(null);
+
+        SendMessageResponse resp = messageService.sendMessageFallback(
+            workspaceId, sessionId, userId,
+            new MessageRequest("What is Redis?"), new RuntimeException("Circuit open"));
+
+        assertThat(resp.taskId()).isNotNull();
+        verify(messageRepository, atLeast(2)).save(any()); // user msg + degradation assistant msg
     }
 }

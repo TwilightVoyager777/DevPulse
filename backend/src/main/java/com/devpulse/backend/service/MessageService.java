@@ -13,6 +13,7 @@ import com.devpulse.backend.repository.MessageRepository;
 import com.devpulse.backend.repository.TaskRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class MessageService {
     private final RedisService redisService;
 
     @Transactional
+    @CircuitBreaker(name = "aiWorker", fallbackMethod = "sendMessageFallback")
     public SendMessageResponse sendMessage(UUID workspaceId, UUID sessionId,
                                             UUID userId, MessageRequest req) {
         ChatSession session = sessionRepository.findByIdAndWorkspaceId(sessionId, workspaceId)
@@ -69,6 +71,49 @@ public class MessageService {
 
         session.setUpdatedAt(Instant.now());
         sessionRepository.save(session);
+
+        return new SendMessageResponse(savedTask.getId(), savedMsg.getId());
+    }
+
+    // Fallback: called when circuit breaker is OPEN or kafkaProducerService throws
+    @Transactional
+    public SendMessageResponse sendMessageFallback(UUID workspaceId, UUID sessionId,
+                                                    UUID userId, MessageRequest req,
+                                                    Throwable ex) {
+        log.warn("Circuit breaker fallback triggered for session {}: {}", sessionId, ex.getMessage());
+
+        Message userMsg = Message.builder()
+            .sessionId(sessionId).role("user").content(req.content()).build();
+        Message savedMsg = messageRepository.save(userMsg);
+
+        Task task = Task.builder().type("AI_QUERY").status("PENDING").build();
+        Task savedTask = taskRepository.save(task);
+
+        String questionHash = Integer.toHexString(req.content().hashCode());
+        String cachedResponse = redisService.getCachedAiResponse(workspaceId.toString(), questionHash);
+
+        String responseContent = cachedResponse != null
+            ? cachedResponse + " (cached response)"
+            : "The AI service is temporarily unavailable. Please try again in a moment.";
+
+        Message assistantMsg = Message.builder()
+            .sessionId(sessionId).role("assistant").content(responseContent).build();
+        messageRepository.save(assistantMsg);
+
+        savedTask.setStatus("DONE");
+        taskRepository.save(savedTask);
+
+        try {
+            com.devpulse.backend.event.TaskStatusEvent doneEvent =
+                new com.devpulse.backend.event.TaskStatusEvent(
+                    savedTask.getId(), sessionId, workspaceId,
+                    "done", null, true, responseContent,
+                    null, null, null, null, 0);
+            redisService.publishSseEvent(sessionId.toString(),
+                new ObjectMapper().writeValueAsString(doneEvent));
+        } catch (Exception e) {
+            log.error("Failed to publish fallback SSE event", e);
+        }
 
         return new SendMessageResponse(savedTask.getId(), savedMsg.getId());
     }
