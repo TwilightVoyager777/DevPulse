@@ -1,0 +1,14 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  kafka:
+    listener:
+      auto-startup: false
+
+logging:
+  level:
+    org.flywaydb: DEBUG
+    com.devpulse: DEBUG
