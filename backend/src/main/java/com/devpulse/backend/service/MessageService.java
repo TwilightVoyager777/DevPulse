@@ -11,6 +11,7 @@ import com.devpulse.backend.model.Task;
 import com.devpulse.backend.repository.ChatSessionRepository;
 import com.devpulse.backend.repository.MessageRepository;
 import com.devpulse.backend.repository.TaskRepository;
+import com.devpulse.backend.metrics.MetricsService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -33,6 +34,7 @@ public class MessageService {
     private final TaskRepository taskRepository;
     private final KafkaProducerService kafkaProducerService;
     private final RedisService redisService;
+    private final MetricsService metricsService;
 
     @Transactional
     @CircuitBreaker(name = "aiWorker", fallbackMethod = "sendMessageFallback")
@@ -80,6 +82,9 @@ public class MessageService {
     public SendMessageResponse sendMessageFallback(UUID workspaceId, UUID sessionId,
                                                     UUID userId, MessageRequest req,
                                                     Throwable ex) {
+        metricsService.recordCircuitBreakerFallback(
+            ex instanceof io.github.resilience4j.circuitbreaker.CallNotPermittedException
+                ? "circuit_open" : "timeout");
         log.warn("Circuit breaker fallback triggered for session {}: {}", sessionId, ex.getMessage());
 
         Message userMsg = Message.builder()

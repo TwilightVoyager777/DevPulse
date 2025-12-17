@@ -1,6 +1,7 @@
 package com.devpulse.backend.consumer;
 
 import com.devpulse.backend.event.TaskStatusEvent;
+import com.devpulse.backend.metrics.MetricsService;
 import com.devpulse.backend.service.MessageService;
 import com.devpulse.backend.service.RedisService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +20,7 @@ public class TaskStatusConsumer {
     private final ObjectMapper objectMapper;
     private final RedisService redisService;
     private final MessageService messageService;
+    private final MetricsService metricsService;
 
     @KafkaListener(topics = "task-status", groupId = "backend-consumer",
                    containerFactory = "kafkaListenerContainerFactory")
@@ -27,9 +29,11 @@ public class TaskStatusConsumer {
             TaskStatusEvent event = objectMapper.readValue(record.value(), TaskStatusEvent.class);
             processEvent(event);
             ack.acknowledge();
+            metricsService.recordKafkaConsumed("task-status", "success");
         } catch (Exception e) {
             log.error("Failed to process task-status event from partition {} offset {}",
                 record.partition(), record.offset(), e);
+            metricsService.recordKafkaConsumed("task-status", "error");
             ack.acknowledge(); // Don't retry deserialization failures; DLQ via config
         }
     }

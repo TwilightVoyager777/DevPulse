@@ -3,6 +3,7 @@ package com.devpulse.backend.service;
 import com.devpulse.backend.dto.session.*;
 import com.devpulse.backend.event.AiTaskEvent;
 import com.devpulse.backend.exception.RateLimitExceededException;
+import com.devpulse.backend.metrics.MetricsService;
 import com.devpulse.backend.model.ChatSession;
 import com.devpulse.backend.model.Message;
 import com.devpulse.backend.model.Task;
@@ -32,6 +33,7 @@ class MessageServiceTest {
     @Mock TaskRepository taskRepository;
     @Mock KafkaProducerService kafkaProducerService;
     @Mock RedisService redisService;
+    @Mock MetricsService metricsService;
     @InjectMocks MessageService messageService;
 
     private ChatSession mockSession(UUID sessionId, UUID workspaceId, UUID userId) {

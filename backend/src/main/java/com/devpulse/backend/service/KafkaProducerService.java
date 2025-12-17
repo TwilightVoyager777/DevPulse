@@ -2,6 +2,7 @@ package com.devpulse.backend.service;
 
 import com.devpulse.backend.event.AiTaskEvent;
 import com.devpulse.backend.event.DocumentIngestionEvent;
+import com.devpulse.backend.metrics.MetricsService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class KafkaProducerService {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final MetricsService metricsService;
 
     public void publishDocumentIngestion(DocumentIngestionEvent event) {
         send(TOPIC_INGESTION, event.documentId().toString(), event);
@@ -32,6 +34,7 @@ public class KafkaProducerService {
         try {
             String json = objectMapper.writeValueAsString(payload);
             kafkaTemplate.send(topic, key, json);
+            metricsService.recordKafkaProduced(topic);
             log.debug("Sent to {}: key={}", topic, key);
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize event for topic {}", topic, e);

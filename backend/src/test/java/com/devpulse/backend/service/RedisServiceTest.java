@@ -1,5 +1,6 @@
 package com.devpulse.backend.service;
 
+import com.devpulse.backend.metrics.MetricsService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -18,6 +19,7 @@ class RedisServiceTest {
 
     @Mock StringRedisTemplate redisTemplate;
     @Mock ValueOperations<String, String> valueOps;
+    @Mock MetricsService metricsService;
     @InjectMocks RedisService redisService;
 
     @Test

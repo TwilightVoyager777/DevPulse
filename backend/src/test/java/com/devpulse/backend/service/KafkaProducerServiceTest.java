@@ -2,6 +2,7 @@ package com.devpulse.backend.service;
 
 import com.devpulse.backend.event.AiTaskEvent;
 import com.devpulse.backend.event.DocumentIngestionEvent;
+import com.devpulse.backend.metrics.MetricsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ class KafkaProducerServiceTest {
 
     @Mock KafkaTemplate<String, String> kafkaTemplate;
     @Spy  ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    @Mock MetricsService metricsService;
     @InjectMocks KafkaProducerService kafkaProducerService;
 
     @Test

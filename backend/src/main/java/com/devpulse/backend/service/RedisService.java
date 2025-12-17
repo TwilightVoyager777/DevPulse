@@ -1,7 +1,8 @@
 package com.devpulse.backend.service;
 
-import lombok.RequiredArgsConstructor;
+import com.devpulse.backend.metrics.MetricsService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -21,13 +22,18 @@ import java.util.concurrent.TimeUnit;
  *   bm25:lock:{workspaceId}     TTL 60s   — BM25 rebuild distributed lock
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class RedisService {
 
     private static final int RATE_LIMIT_MAX = 10;
 
     private final StringRedisTemplate redisTemplate;
+    private final MetricsService metricsService;
+
+    public RedisService(StringRedisTemplate redisTemplate, @Lazy MetricsService metricsService) {
+        this.redisTemplate = redisTemplate;
+        this.metricsService = metricsService;
+    }
 
     // ── Token blacklist ─────────────────────────────────────────────────────
 
@@ -72,7 +78,13 @@ public class RedisService {
     }
 
     public String getCachedAiResponse(String workspaceId, String questionHash) {
-        return redisTemplate.opsForValue().get("ai:cache:" + workspaceId + ":" + questionHash);
+        String result = redisTemplate.opsForValue().get("ai:cache:" + workspaceId + ":" + questionHash);
+        if (result != null) {
+            metricsService.recordCacheHit("ai_cache");
+        } else {
+            metricsService.recordCacheMiss("ai_cache");
+        }
+        return result;
     }
 
     // ── SSE Pub/Sub ─────────────────────────────────────────────────────────
