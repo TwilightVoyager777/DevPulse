@@ -3,12 +3,15 @@ package com.devpulse.backend.controller;
 import com.devpulse.backend.dto.session.*;
 import com.devpulse.backend.service.MessageService;
 import com.devpulse.backend.service.SessionService;
+import com.devpulse.backend.service.SseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +23,7 @@ public class SessionController {
 
     private final SessionService sessionService;
     private final MessageService messageService;
+    private final SseService sseService;
 
     @GetMapping
     public ResponseEntity<List<SessionResponse>> list(@PathVariable UUID workspaceId,
@@ -65,5 +69,12 @@ public class SessionController {
             .body(messageService.sendMessage(workspaceId, sessionId,
                 UUID.fromString(user.getUsername()), req));
     }
-    // SSE endpoint added in Task 15
+
+    @GetMapping(value = "/{sessionId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream(@PathVariable UUID workspaceId,
+                              @PathVariable UUID sessionId,
+                              @RequestParam(required = false) UUID taskId) {
+        sessionService.getSession(workspaceId, sessionId); // verify exists
+        return sseService.createEmitter(sessionId.toString());
+    }
 }
