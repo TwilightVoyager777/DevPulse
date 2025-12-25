@@ -131,46 +131,124 @@ jobs:
         run: npx tsc --noEmit
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Docker build (on push to master only — no push to registry)
+  # Build & push multi-arch images to ghcr.io (master only, after all tests)
   # ──────────────────────────────────────────────────────────────────────────
-  docker-build:
-    name: Docker Build Check
+  build-and-push:
+    name: Build & Push Images
     runs-on: ubuntu-latest
     needs: [backend-test, ai-worker-test, frontend-test]
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up QEMU (for multi-arch)
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build backend image
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
-          push: false
-          tags: devpulse/backend:${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/devpulse-backend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/devpulse-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build ai-worker image
+      - name: Build & push ai-worker image
         uses: docker/build-push-action@v5
         with:
           context: ./ai-worker
           file: ./ai-worker/Dockerfile
-          push: false
-          tags: devpulse/ai-worker:${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/devpulse-ai-worker:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/devpulse-ai-worker:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build frontend image
+      - name: Build & push frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
-          push: false
-          tags: devpulse/frontend:${{ github.sha }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/devpulse-frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/devpulse-frontend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # K8s rolling deploy with auto-rollback (master only, after images pushed)
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: K8s Rolling Deploy
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Rolling deploy — backend
+        id: deploy-backend
+        run: |
+          kubectl set image deployment/devpulse-backend \
+            backend=ghcr.io/${{ github.repository_owner }}/devpulse-backend:${{ github.sha }} \
+            -n devpulse
+          kubectl rollout status deployment/devpulse-backend -n devpulse --timeout=5m
+
+      - name: Rolling deploy — ai-worker
+        id: deploy-ai-worker
+        run: |
+          kubectl set image deployment/devpulse-ai-worker \
+            ai-worker=ghcr.io/${{ github.repository_owner }}/devpulse-ai-worker:${{ github.sha }} \
+            -n devpulse
+          kubectl rollout status deployment/devpulse-ai-worker -n devpulse --timeout=5m
+
+      - name: Rolling deploy — frontend
+        id: deploy-frontend
+        run: |
+          kubectl set image deployment/devpulse-frontend \
+            frontend=ghcr.io/${{ github.repository_owner }}/devpulse-frontend:${{ github.sha }} \
+            -n devpulse
+          kubectl rollout status deployment/devpulse-frontend -n devpulse --timeout=5m
+
+      - name: Auto-rollback on failure
+        if: failure()
+        run: |
+          echo "Deploy failed — rolling back all deployments..."
+          kubectl rollout undo deployment/devpulse-backend  -n devpulse || true
+          kubectl rollout undo deployment/devpulse-ai-worker -n devpulse || true
+          kubectl rollout undo deployment/devpulse-frontend -n devpulse || true
+          echo "Rollback complete."
+          exit 1
