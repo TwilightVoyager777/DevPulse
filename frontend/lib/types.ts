@@ -48,6 +48,8 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   sources: SourceInfo[] | null;
+  tokensUsed: number | null;
+  latencyMs: number | null;
   createdAt: string;
 }
 

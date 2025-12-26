@@ -36,6 +36,8 @@ export function useChat(workspaceId: string, sessionId: string | null) {
         role: "user",
         content,
         sources: null,
+        tokensUsed: null,
+        latencyMs: null,
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, tempUserMsg]);
@@ -68,6 +70,8 @@ export function useChat(workspaceId: string, sessionId: string | null) {
                 role: "assistant",
                 content: finalContent,
                 sources: chunk.sources ?? null,
+                tokensUsed: chunk.tokensUsed ?? null,
+                latencyMs: chunk.latencyMs ?? null,
                 createdAt: new Date().toISOString(),
               };
               setMessages((prev) => [...prev, assistantMsg]);

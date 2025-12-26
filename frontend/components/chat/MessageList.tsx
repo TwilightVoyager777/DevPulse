@@ -59,6 +59,12 @@ export function MessageList({ messages, streamingContent }: MessageListProps) {
                 ))}
               </div>
             )}
+            {msg.role === "assistant" && (msg.tokensUsed != null || msg.latencyMs != null) && (
+              <div className="mt-1.5 flex gap-3 text-[11px] text-gray-600">
+                {msg.tokensUsed != null && <span>{msg.tokensUsed} tokens</span>}
+                {msg.latencyMs != null && <span>{(msg.latencyMs / 1000).toFixed(1)}s</span>}
+              </div>
+            )}
           </div>
         </div>
       ))}
