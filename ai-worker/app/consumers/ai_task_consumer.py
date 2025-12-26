@@ -1,17 +1,12 @@
 import asyncio
 import logging
-import time
 
 from confluent_kafka import Consumer, KafkaError
 
 from app.config import get_settings
 from app.models.schemas import AiTaskEvent
 from app.services.ai_service import process_ai_task
-from app.utils.metrics import (
-    AI_TASKS_TOTAL,
-    AI_TASK_DURATION_SECONDS,
-    KAFKA_MESSAGES_CONSUMED_TOTAL,
-)
+from app.utils.metrics import KAFKA_MESSAGES_CONSUMED_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +68,10 @@ class AiTaskConsumer:
 
             await process_ai_task(event)
 
-            duration = time.time() - start
-            AI_TASKS_TOTAL.labels(status="success").inc()
-            AI_TASK_DURATION_SECONDS.observe(duration)
             KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="success").inc()
             self._consumer.commit(msg)
 
         except Exception as e:
             logger.exception("Failed to process AI task: %s", e)
-            AI_TASKS_TOTAL.labels(status="failed").inc()
             KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="error").inc()
             self._consumer.commit(msg)

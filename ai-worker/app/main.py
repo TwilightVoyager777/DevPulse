@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from app.config import get_settings
-from app.utils.db import get_pool, close_pool
+from app.utils.db import get_pool, close_pool, list_bm25_workspace_ids
 from app.utils.redis_client import get_redis, close_redis
 from app.utils.metrics import APP_INFO
 from app.consumers.document_consumer import DocumentConsumer
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: init DB pool, Redis, start Kafka consumers."""
+    """Startup: init DB pool, Redis, restore BM25 indexes, start Kafka consumers."""
     settings = get_settings()
     logging.basicConfig(level=getattr(logging, settings.log_level))
 
@@ -32,7 +32,17 @@ async def lifespan(app: FastAPI):
     await get_redis()
     logger.info("Redis connected")
 
-    # Start Kafka consumers in background threads
+    # Restore BM25 indexes from DB into memory cache
+    from app.services.bm25_service import get_index, _index_cache
+    try:
+        workspace_ids = await list_bm25_workspace_ids()
+        for wid in workspace_ids:
+            await get_index(wid)
+        logger.info("Restored BM25 indexes for %d workspaces", len(_index_cache))
+    except Exception as e:
+        logger.warning("BM25 index restore failed (non-fatal): %s", e)
+
+    # Start Kafka consumers
     doc_consumer = DocumentConsumer()
     ai_consumer = AiTaskConsumer()
 
@@ -59,7 +69,8 @@ app = FastAPI(title="DevPulse AI Worker", version="1.0.0", lifespan=lifespan)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "ai-worker"}
+    from app.services.bm25_service import _index_cache
+    return {"status": "ok", "bm25_indexes_loaded": len(_index_cache)}
 
 
 @app.get("/metrics", response_class=PlainTextResponse)

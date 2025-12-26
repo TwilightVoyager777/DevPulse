@@ -146,3 +146,13 @@ async def load_bm25_index(workspace_id: str) -> Optional[bytes]:
             workspace_id,
         )
         return bytes(row["index_data"]) if row else None
+
+
+async def list_bm25_workspace_ids() -> List[str]:
+    """Return all workspace IDs that have a saved BM25 index."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT workspace_id::text FROM bm25_indexes ORDER BY updated_at DESC"
+        )
+        return [r["workspace_id"] for r in rows]

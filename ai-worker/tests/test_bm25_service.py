@@ -65,6 +65,8 @@ async def test_search_bm25_builds_index_if_missing(mocker):
     )
     mocker.patch("app.services.bm25_service.save_bm25_index", new_callable=AsyncMock)
     mocker.patch("app.services.bm25_service.load_bm25_index", new_callable=AsyncMock, return_value=None)
+    mocker.patch("app.services.bm25_service.load_bm25_from_redis", new_callable=AsyncMock, return_value=None)
+    mocker.patch("app.services.bm25_service.save_bm25_to_redis", new_callable=AsyncMock)
     # Clear cache
     import app.services.bm25_service as bm25_mod
     bm25_mod._index_cache.clear()

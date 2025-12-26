@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List, Dict, Tuple
 
 from app.config import get_settings
@@ -6,6 +7,7 @@ from app.models.schemas import SourceInfo
 from app.services.embedding_service import embed_query
 from app.services.bm25_service import search_bm25
 from app.utils.db import vector_search
+from app.utils.metrics import RETRIEVAL_LATENCY_SECONDS, RETRIEVAL_TOP_SCORE, RETRIEVAL_SOURCES_COUNT
 
 logger = logging.getLogger(__name__)
 
@@ -62,25 +64,34 @@ async def hybrid_search(
     if top_k is None:
         top_k = settings.retrieval_top_k
 
-    # Parallel-ish: BM25 is sync (in-memory), vector is async DB call
     query_embedding = embed_query(query)
 
+    t0 = time.perf_counter()
     bm25_results = await search_bm25(
         workspace_id, query, top_k=settings.bm25_candidate_k
     )
+    RETRIEVAL_LATENCY_SECONDS.labels(method="bm25").observe(time.perf_counter() - t0)
+
+    t1 = time.perf_counter()
     vector_results = await vector_search(
         workspace_id, query_embedding.tolist(), top_k=settings.vector_candidate_k
     )
+    RETRIEVAL_LATENCY_SECONDS.labels(method="vector").observe(time.perf_counter() - t1)
 
     logger.debug(
         "BM25: %d results, Vector: %d results for workspace %s",
         len(bm25_results), len(vector_results), workspace_id,
     )
 
-    # RRF fusion
+    t2 = time.perf_counter()
     fused = _reciprocal_rank_fusion(
         bm25_results, vector_results, rrf_k=settings.rrf_k
     )[:top_k]
+    RETRIEVAL_LATENCY_SECONDS.labels(method="rrf").observe(time.perf_counter() - t2)
+
+    if fused:
+        RETRIEVAL_TOP_SCORE.observe(fused[0]["rrf_score"])
+    RETRIEVAL_SOURCES_COUNT.observe(len(fused))
 
     # Build SourceInfo list
     sources = [

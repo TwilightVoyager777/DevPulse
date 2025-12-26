@@ -10,9 +10,9 @@ from app.models.schemas import DocumentIngestionEvent
 from app.services.document_service import ingest_document
 from app.services.bm25_service import build_and_save_index
 from app.utils.metrics import (
-    DOCS_INGESTED_TOTAL,
-    CHUNKS_CREATED_TOTAL,
-    INGESTION_DURATION_SECONDS,
+    INGESTION_DOCUMENTS_TOTAL,
+    INGESTION_CHUNKS_TOTAL,
+    INGESTION_LATENCY_SECONDS,
     KAFKA_MESSAGES_CONSUMED_TOTAL,
 )
 
@@ -87,9 +87,9 @@ class DocumentConsumer:
                 await build_and_save_index(str(event.workspaceId))
 
             duration = time.time() - start
-            DOCS_INGESTED_TOTAL.labels(status="success").inc()
-            CHUNKS_CREATED_TOTAL.inc(chunk_count)
-            INGESTION_DURATION_SECONDS.observe(duration)
+            INGESTION_DOCUMENTS_TOTAL.labels(status="indexed").inc()
+            INGESTION_CHUNKS_TOTAL.inc(chunk_count)
+            INGESTION_LATENCY_SECONDS.observe(duration)
             KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="success").inc()
 
             self._consumer.commit(msg)
@@ -100,6 +100,6 @@ class DocumentConsumer:
 
         except Exception as e:
             logger.exception("Failed to process document ingestion: %s", e)
-            DOCS_INGESTED_TOTAL.labels(status="failed").inc()
+            INGESTION_DOCUMENTS_TOTAL.labels(status="failed").inc()
             KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="error").inc()
             self._consumer.commit(msg)  # Commit to avoid reprocessing bad messages

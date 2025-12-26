@@ -10,6 +10,8 @@ from app.utils.db import (
     save_bm25_index,
     load_bm25_index,
 )
+from app.utils.redis_client import save_bm25_to_redis, load_bm25_from_redis
+from app.utils.metrics import BM25_CACHE_HIT_TOTAL
 
 logger = logging.getLogger(__name__)
 
@@ -59,31 +61,58 @@ _index_cache: Dict[str, BM25Index] = {}
 
 
 async def build_and_save_index(workspace_id: str) -> BM25Index:
-    """Load all chunks from DB, build BM25 index, persist to bm25_indexes table."""
+    """Rebuild BM25 from DB chunks and write to all 3 cache layers."""
+    BM25_CACHE_HIT_TOTAL.labels(layer="rebuild").inc()
     chunks = await get_chunks_for_workspace(workspace_id)
     if not chunks:
         logger.info("No chunks for workspace %s, building empty index", workspace_id)
 
     index = BM25Index(chunks)
     index_bytes = index.to_bytes()
-    await save_bm25_index(workspace_id, index_bytes, doc_count=len(chunks))
-    _index_cache[workspace_id] = index
+
+    # Write to all 3 layers simultaneously
+    await save_bm25_index(workspace_id, index_bytes, doc_count=len(chunks))  # postgres
+    try:
+        await save_bm25_to_redis(workspace_id, index_bytes)                 # redis
+    except Exception as e:
+        logger.warning("Failed to save BM25 to Redis for workspace %s: %s", workspace_id, e)
+    _index_cache[workspace_id] = index                                        # memory
+
     logger.info("BM25 index built for workspace %s: %d chunks", workspace_id, len(chunks))
     return index
 
 
 async def get_index(workspace_id: str) -> Optional[BM25Index]:
-    """Get BM25 index from cache, then DB. Returns None if not found."""
+    """3-layer BM25 cache: memory → Redis → PostgreSQL."""
+    # Layer 1: memory
     if workspace_id in _index_cache:
+        BM25_CACHE_HIT_TOTAL.labels(layer="memory").inc()
         return _index_cache[workspace_id]
 
-    index_bytes = await load_bm25_index(workspace_id)
-    if index_bytes is None:
-        return None
+    # Layer 2: Redis
+    try:
+        redis_data = await load_bm25_from_redis(workspace_id)
+        if redis_data:
+            BM25_CACHE_HIT_TOTAL.labels(layer="redis").inc()
+            index = BM25Index.from_bytes(redis_data)
+            _index_cache[workspace_id] = index
+            return index
+    except Exception as e:
+        logger.warning("Redis BM25 lookup failed for workspace %s: %s", workspace_id, e)
 
-    index = BM25Index.from_bytes(index_bytes)
-    _index_cache[workspace_id] = index
-    return index
+    # Layer 3: PostgreSQL (+ write back to Redis)
+    pg_data = await load_bm25_index(workspace_id)
+    if pg_data:
+        BM25_CACHE_HIT_TOTAL.labels(layer="postgres").inc()
+        index = BM25Index.from_bytes(pg_data)
+        _index_cache[workspace_id] = index
+        try:
+            await save_bm25_to_redis(workspace_id, pg_data)  # write-back
+        except Exception as e:
+            logger.warning("Failed to write BM25 back to Redis for workspace %s: %s", workspace_id, e)
+        return index
+
+    return None
 
 
 async def search_bm25(
