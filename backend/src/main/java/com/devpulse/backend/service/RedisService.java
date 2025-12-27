@@ -93,6 +93,23 @@ public class RedisService {
         redisTemplate.convertAndSend("stream:" + sessionId, eventJson);
     }
 
+    // ── Processing lock (idempotent Kafka consumption) ──────────────────────
+
+    /**
+     * Try to acquire a distributed lock for processing a task.
+     * Uses SET NX with TTL 30s to prevent concurrent/duplicate processing.
+     * Returns true if the lock was acquired.
+     */
+    public boolean tryProcessingLock(String taskId) {
+        Boolean acquired = redisTemplate.opsForValue()
+            .setIfAbsent("processing:task:" + taskId, "1", 30L, TimeUnit.SECONDS);
+        return Boolean.TRUE.equals(acquired);
+    }
+
+    public void releaseProcessingLock(String taskId) {
+        redisTemplate.delete("processing:task:" + taskId);
+    }
+
     // ── Generic cache helpers ───────────────────────────────────────────────
 
     public void set(String key, String value, long ttlSeconds) {

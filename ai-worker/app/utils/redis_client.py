@@ -79,3 +79,16 @@ async def load_bm25_from_redis(workspace_id: str) -> Optional[bytes]:
     """Load BM25 pickle bytes from Redis. Returns None on miss."""
     r = await get_raw_redis()
     return await r.get(f"bm25:{workspace_id}")
+
+
+async def acquire_bm25_lock(workspace_id: str, ttl: int = 60) -> bool:
+    """Try to acquire the BM25 rebuild distributed lock (SET NX). Returns True if acquired."""
+    r = await get_redis()
+    result = await r.set(f"bm25:lock:{workspace_id}", "1", nx=True, ex=ttl)
+    return result is True
+
+
+async def release_bm25_lock(workspace_id: str) -> None:
+    """Release the BM25 rebuild distributed lock."""
+    r = await get_redis()
+    await r.delete(f"bm25:lock:{workspace_id}")

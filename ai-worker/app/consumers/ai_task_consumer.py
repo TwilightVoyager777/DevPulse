@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.models.schemas import AiTaskEvent
 from app.services.ai_service import process_ai_task
 from app.utils.metrics import KAFKA_MESSAGES_CONSUMED_TOTAL
+from app.utils.redis_client import is_event_processed, mark_event_processed
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +59,19 @@ class AiTaskConsumer:
         self._running = False
 
     async def _handle_message(self, msg) -> None:
-        start = time.time()
         try:
             event = AiTaskEvent.model_validate_json(msg.value().decode("utf-8"))
-            logger.info(
-                "Processing AI task %s (session=%s)",
-                event.taskId, event.sessionId,
-            )
+            task_id = str(event.taskId)
 
+            # Idempotency: skip if already processed
+            if await is_event_processed(task_id):
+                logger.debug("Skipping duplicate AI task %s", task_id)
+                self._consumer.commit(msg)
+                return
+
+            logger.info("Processing AI task %s (session=%s)", task_id, event.sessionId)
             await process_ai_task(event)
+            await mark_event_processed(task_id)
 
             KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="success").inc()
             self._consumer.commit(msg)

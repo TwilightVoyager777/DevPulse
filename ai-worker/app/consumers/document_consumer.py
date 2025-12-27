@@ -1,9 +1,9 @@
 import asyncio
-import json
 import logging
 import time
 
 from confluent_kafka import Consumer, KafkaError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from app.config import get_settings
 from app.models.schemas import DocumentIngestionEvent
@@ -15,6 +15,7 @@ from app.utils.metrics import (
     INGESTION_LATENCY_SECONDS,
     KAFKA_MESSAGES_CONSUMED_TOTAL,
 )
+from app.utils.redis_client import is_event_processed, mark_event_processed
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +70,21 @@ class DocumentConsumer:
         start = time.time()
         try:
             event = DocumentIngestionEvent.model_validate_json(msg.value().decode("utf-8"))
+            doc_id = str(event.documentId)
+
+            # Idempotency: skip if already processed
+            if await is_event_processed(doc_id):
+                logger.debug("Skipping duplicate ingestion for document %s", doc_id)
+                self._consumer.commit(msg)
+                return
+
             logger.info(
                 "Ingesting document %s (workspace=%s, type=%s)",
-                event.documentId, event.workspaceId, event.sourceType,
+                doc_id, event.workspaceId, event.sourceType,
             )
 
-            chunk_count = await ingest_document(
-                document_id=str(event.documentId),
+            chunk_count = await _ingest_with_retry(
+                document_id=doc_id,
                 workspace_id=str(event.workspaceId),
                 content=event.contentOrPath,
                 source_type=event.sourceType,
@@ -86,6 +95,8 @@ class DocumentConsumer:
             if chunk_count > 0:
                 await build_and_save_index(str(event.workspaceId))
 
+            await mark_event_processed(doc_id)
+
             duration = time.time() - start
             INGESTION_DOCUMENTS_TOTAL.labels(status="indexed").inc()
             INGESTION_CHUNKS_TOTAL.inc(chunk_count)
@@ -95,11 +106,34 @@ class DocumentConsumer:
             self._consumer.commit(msg)
             logger.info(
                 "Document %s ingested: %d chunks in %.2fs",
-                event.documentId, chunk_count, duration,
+                doc_id, chunk_count, duration,
             )
 
         except Exception as e:
-            logger.exception("Failed to process document ingestion: %s", e)
+            logger.exception("Failed to process document ingestion after retries: %s", e)
             INGESTION_DOCUMENTS_TOTAL.labels(status="failed").inc()
             KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="error").inc()
-            self._consumer.commit(msg)  # Commit to avoid reprocessing bad messages
+            self._consumer.commit(msg)  # Commit to avoid infinite reprocessing
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=1, max=10),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
+async def _ingest_with_retry(
+    document_id: str,
+    workspace_id: str,
+    content: str,
+    source_type: str,
+    metadata,
+) -> int:
+    """Ingest a document with tenacity exponential backoff (3 attempts, 1s→2s→4s)."""
+    return await ingest_document(
+        document_id=document_id,
+        workspace_id=workspace_id,
+        content=content,
+        source_type=source_type,
+        metadata=metadata,
+    )

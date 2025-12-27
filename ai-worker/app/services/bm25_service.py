@@ -10,7 +10,12 @@ from app.utils.db import (
     save_bm25_index,
     load_bm25_index,
 )
-from app.utils.redis_client import save_bm25_to_redis, load_bm25_from_redis
+from app.utils.redis_client import (
+    save_bm25_to_redis,
+    load_bm25_from_redis,
+    acquire_bm25_lock,
+    release_bm25_lock,
+)
 from app.utils.metrics import BM25_CACHE_HIT_TOTAL
 
 logger = logging.getLogger(__name__)
@@ -61,25 +66,49 @@ _index_cache: Dict[str, BM25Index] = {}
 
 
 async def build_and_save_index(workspace_id: str) -> BM25Index:
-    """Rebuild BM25 from DB chunks and write to all 3 cache layers."""
-    BM25_CACHE_HIT_TOTAL.labels(layer="rebuild").inc()
-    chunks = await get_chunks_for_workspace(workspace_id)
-    if not chunks:
-        logger.info("No chunks for workspace %s, building empty index", workspace_id)
+    """Rebuild BM25 from DB chunks and write to all 3 cache layers.
 
-    index = BM25Index(chunks)
-    index_bytes = index.to_bytes()
-
-    # Write to all 3 layers simultaneously
-    await save_bm25_index(workspace_id, index_bytes, doc_count=len(chunks))  # postgres
+    Uses a distributed Redis lock (bm25:lock:{workspaceId}, TTL 60s) to prevent
+    concurrent rebuilds for the same workspace.
+    """
+    # Acquire distributed lock to prevent duplicate rebuilds
+    locked = False
     try:
-        await save_bm25_to_redis(workspace_id, index_bytes)                 # redis
-    except Exception as e:
-        logger.warning("Failed to save BM25 to Redis for workspace %s: %s", workspace_id, e)
-    _index_cache[workspace_id] = index                                        # memory
+        locked = await acquire_bm25_lock(workspace_id)
+        if not locked:
+            # Another instance is rebuilding — wait for it to finish then read from cache
+            logger.info("BM25 rebuild already in progress for workspace %s, waiting...", workspace_id)
+            import asyncio as _asyncio
+            await _asyncio.sleep(2)
+            existing = await get_index(workspace_id)
+            if existing:
+                return existing
 
-    logger.info("BM25 index built for workspace %s: %d chunks", workspace_id, len(chunks))
-    return index
+        BM25_CACHE_HIT_TOTAL.labels(layer="rebuild").inc()
+        chunks = await get_chunks_for_workspace(workspace_id)
+        if not chunks:
+            logger.info("No chunks for workspace %s, building empty index", workspace_id)
+
+        index = BM25Index(chunks)
+        index_bytes = index.to_bytes()
+
+        # Write to all 3 layers simultaneously
+        await save_bm25_index(workspace_id, index_bytes, doc_count=len(chunks))  # postgres
+        try:
+            await save_bm25_to_redis(workspace_id, index_bytes)                  # redis
+        except Exception as e:
+            logger.warning("Failed to save BM25 to Redis for workspace %s: %s", workspace_id, e)
+        _index_cache[workspace_id] = index                                        # memory
+
+        logger.info("BM25 index built for workspace %s: %d chunks", workspace_id, len(chunks))
+        return index
+
+    finally:
+        if locked:
+            try:
+                await release_bm25_lock(workspace_id)
+            except Exception as e:
+                logger.warning("Failed to release BM25 lock for workspace %s: %s", workspace_id, e)
 
 
 async def get_index(workspace_id: str) -> Optional[BM25Index]:

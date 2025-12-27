@@ -39,25 +39,38 @@ public class TaskStatusConsumer {
     }
 
     private void processEvent(TaskStatusEvent event) throws Exception {
-        // Idempotency check: skip if task already processed
-        String processedKey = "processed:event:" + event.taskId();
+        String taskId = event.taskId().toString();
+
+        // Idempotency check: skip if task already fully processed
+        String processedKey = "processed:event:" + taskId;
         if (redisService.hasKey(processedKey)) {
-            log.debug("Skipping duplicate event for task {}", event.taskId());
+            log.debug("Skipping duplicate event for task {}", taskId);
             return;
         }
 
-        // Forward chunk/done/failed event to SSE via Redis Pub/Sub
-        String eventJson = objectMapper.writeValueAsString(event);
-        redisService.publishSseEvent(event.sessionId().toString(), eventJson);
+        // Distributed lock: prevent concurrent processing of the same task
+        boolean locked = redisService.tryProcessingLock(taskId);
+        if (!locked) {
+            log.debug("Task {} already being processed by another instance, skipping", taskId);
+            return;
+        }
 
-        // On completion: persist assistant message + update task status
-        if (event.isDone() && "done".equals(event.status())) {
-            messageService.handleAiResponse(event);
-            redisService.cacheTaskStatus(event.taskId().toString(), eventJson);
-            redisService.set(processedKey, "1", 3600L);
-        } else if ("failed".equals(event.status())) {
-            redisService.cacheTaskStatus(event.taskId().toString(), eventJson);
-            redisService.set(processedKey, "1", 3600L);
+        try {
+            // Forward chunk/done/failed event to SSE via Redis Pub/Sub
+            String eventJson = objectMapper.writeValueAsString(event);
+            redisService.publishSseEvent(event.sessionId().toString(), eventJson);
+
+            // On completion: persist assistant message + mark processed
+            if (event.isDone() && "done".equals(event.status())) {
+                messageService.handleAiResponse(event);
+                redisService.cacheTaskStatus(taskId, eventJson);
+                redisService.set(processedKey, "1", 3600L);
+            } else if ("failed".equals(event.status())) {
+                redisService.cacheTaskStatus(taskId, eventJson);
+                redisService.set(processedKey, "1", 3600L);
+            }
+        } finally {
+            redisService.releaseProcessingLock(taskId);
         }
     }
 }
