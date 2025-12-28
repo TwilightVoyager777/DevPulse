@@ -52,4 +52,10 @@ public class DocumentController {
         documentService.deleteDocument(workspaceId, docId);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/{docId}/retry")
+    public ResponseEntity<DocumentResponse> retry(@PathVariable UUID workspaceId,
+                                                   @PathVariable UUID docId) {
+        return ResponseEntity.ok(documentService.retryDocument(workspaceId, docId));
+    }
 }

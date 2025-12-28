@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
 import { listSessions, createSession, deleteSession } from "@/lib/api/sessions";
-import { listDocuments, uploadDocument, deleteDocument } from "@/lib/api/documents";
+import { listDocuments, uploadDocument, deleteDocument, retryDocument } from "@/lib/api/documents";
+import { useDocumentPoller } from "@/hooks/useDocumentPoller";
 import { SessionSidebar } from "@/components/chat/SessionSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { MessageInput } from "@/components/chat/MessageInput";
@@ -35,8 +36,10 @@ export default function WorkspacePage() {
     () => listDocuments(workspaceId).then((r) => r.data)
   );
 
-  const { messages, streamingContent, sending, streaming, loadMessages, send } =
+  const { messages, streamingContent, sending, streaming, error, retry, loadMessages, send } =
     useChat(workspaceId, activeSession?.id ?? null);
+
+  const { startPolling } = useDocumentPoller(workspaceId);
 
   // Update sources panel when a new assistant message arrives
   useEffect(() => {
@@ -80,6 +83,27 @@ export default function WorkspacePage() {
   const handleUpload = async (file: File) => {
     const { data: doc } = await uploadDocument(workspaceId, file);
     mutateDocs((prev: Document[] | undefined) => (prev ? [doc, ...prev] : [doc]), false);
+    // Poll every 2s until INDEXED or FAILED, then refresh the doc list
+    startPolling(doc.id, (updated) => {
+      mutateDocs((prev: Document[] | undefined) =>
+        prev ? prev.map((d) => (d.id === updated.id ? updated : d)) : [updated],
+        false
+      );
+    });
+  };
+
+  const handleRetry = async (docId: string) => {
+    const { data: doc } = await retryDocument(workspaceId, docId);
+    mutateDocs((prev: Document[] | undefined) =>
+      prev ? prev.map((d) => (d.id === doc.id ? doc : d)) : [doc],
+      false
+    );
+    startPolling(doc.id, (updated) => {
+      mutateDocs((prev: Document[] | undefined) =>
+        prev ? prev.map((d) => (d.id === updated.id ? updated : d)) : [updated],
+        false
+      );
+    });
   };
 
   const handleDeleteDoc = async (docId: string) => {
@@ -132,7 +156,12 @@ export default function WorkspacePage() {
             <div className="flex flex-1 overflow-hidden">
               <div className="flex flex-1 flex-col overflow-hidden">
                 <MessageList messages={messages} streamingContent={streamingContent} />
-                <MessageInput onSend={send} disabled={sending || streaming} />
+                <MessageInput
+                onSend={send}
+                onRetry={retry}
+                disabled={sending || streaming}
+                error={error}
+              />
               </div>
               <SourcesPanel
                 sources={currentSources}
@@ -153,6 +182,7 @@ export default function WorkspacePage() {
             documents={documents ?? []}
             onUpload={handleUpload}
             onDelete={handleDeleteDoc}
+            onRetry={handleRetry}
           />
         )}
       </div>

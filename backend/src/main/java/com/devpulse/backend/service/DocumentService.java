@@ -77,6 +77,19 @@ public class DocumentService {
         documentRepository.delete(doc);
     }
 
+    public DocumentResponse retryDocument(UUID workspaceId, UUID docId) {
+        Document doc = documentRepository.findByIdAndWorkspaceId(docId, workspaceId)
+            .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + docId));
+        // Reset status to PENDING and clear previous error
+        doc.setStatus("PENDING");
+        doc.setErrorMessage(null);
+        doc.setChunkCount(null);
+        doc.setIndexedAt(null);
+        documentRepository.save(doc);
+        publishIngestion(doc, doc.getSourceType(), doc.getContent(), null);
+        return toResponse(doc);
+    }
+
     private void publishIngestion(Document doc, String sourceType, String content,
                                    Map<String, Object> metadata) {
         Task task = Task.builder()

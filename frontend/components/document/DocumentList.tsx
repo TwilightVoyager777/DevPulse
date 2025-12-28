@@ -12,9 +12,10 @@ interface DocumentListProps {
   documents: Document[];
   onUpload: (file: File) => Promise<void>;
   onDelete: (docId: string) => Promise<void>;
+  onRetry: (docId: string) => Promise<void>;
 }
 
-export function DocumentList({ documents, onUpload, onDelete }: DocumentListProps) {
+export function DocumentList({ documents, onUpload, onDelete, onRetry }: DocumentListProps) {
   const [showImport, setShowImport] = useState(false);
 
   const handleImport = async (url: string) => {
@@ -54,7 +55,17 @@ export function DocumentList({ documents, onUpload, onDelete }: DocumentListProp
                   <span className="text-xs text-gray-600">{doc.sourceType}</span>
                 </div>
                 {doc.errorMessage && (
-                  <p className="text-xs text-red-400">{doc.errorMessage}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-red-400">{doc.errorMessage}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-amber-500 hover:text-amber-300 px-1 py-0 h-auto"
+                      onClick={() => onRetry(doc.id)}
+                    >
+                      Retry
+                    </Button>
+                  </div>
                 )}
               </div>
               <Button

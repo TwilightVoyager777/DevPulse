@@ -13,6 +13,7 @@ export function useChat(workspaceId: string, sessionId: string | null) {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const streamingContentRef = useRef("");
 
@@ -25,9 +26,14 @@ export function useChat(workspaceId: string, sessionId: string | null) {
     setTaskId(null);
   }, [workspaceId, sessionId]);
 
+  const retry = useCallback(() => {
+    setError(null);
+  }, []);
+
   const send = useCallback(
     async (content: string) => {
       if (!sessionId || sending || streaming) return;
+      setError(null);
 
       // Optimistically append user message
       const tempUserMsg: Message = {
@@ -94,12 +100,14 @@ export function useChat(workspaceId: string, sessionId: string | null) {
           setStreaming(false);
           setStreamingContent("");
           streamingContentRef.current = "";
+          setError("Connection lost. Please try again.");
           es.close();
           esRef.current = null;
         };
       } catch {
         setSending(false);
         setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
+        setError("Failed to send message. Please try again.");
       }
     },
     [workspaceId, sessionId, sending, streaming]
@@ -111,6 +119,8 @@ export function useChat(workspaceId: string, sessionId: string | null) {
     taskId,
     sending,
     streaming,
+    error,
+    retry,
     loadMessages,
     send,
   };

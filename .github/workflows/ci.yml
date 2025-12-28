@@ -34,8 +34,8 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Run tests
-        run: ./gradlew test --no-daemon
+      - name: Run tests + Jacoco
+        run: ./gradlew test jacocoTestReport --no-daemon
         env:
           # Minimal JWT keys for tests (RSA 2048 generated at test startup via HybridRetrievalIntegrationTest static block)
           JWT_PRIVATE_KEY: ""
@@ -47,6 +47,13 @@ jobs:
         with:
           name: backend-test-report
           path: backend/build/reports/tests/test/
+
+      - name: Upload Jacoco coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jacoco-report
+          path: backend/build/reports/jacoco/test/html/
 
   # ──────────────────────────────────────────────────────────────────────────
   # AI Worker — pytest (Python 3.11)
@@ -85,25 +92,27 @@ jobs:
             tenacity==8.3.0 \
             pytest==8.2.0 \
             pytest-asyncio==0.23.6 \
-            pytest-mock==3.14.0
+            pytest-mock==3.14.0 \
+            pytest-cov==5.0.0
 
-      - name: Run unit tests (skip embedding — no torch)
+      - name: Run unit tests with coverage (skip embedding — no torch)
         run: |
           python -m pytest tests/test_bm25_service.py \
                            tests/test_document_service.py \
                            tests/test_retrieval_service.py \
                            tests/test_ai_service.py \
-                           -v --tb=short
+                           -v --tb=short \
+                           --cov=app --cov-report=xml --cov-report=term-missing
         env:
           # Disable model loading — tests mock SentenceTransformer
           ANTHROPIC_API_KEY: "test-key"
 
-      - name: Upload test report
+      - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ai-worker-test-report
-          path: ai-worker/.pytest_cache/
+          name: ai-worker-coverage
+          path: ai-worker/coverage.xml
 
   # ──────────────────────────────────────────────────────────────────────────
   # Frontend — Vitest (Node 20)

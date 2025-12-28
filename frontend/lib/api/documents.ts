@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import { Document } from "@/lib/types";
+import { Document, Task } from "@/lib/types";
 
 export const listDocuments = (workspaceId: string) =>
   apiClient.get<Document[]>(`/api/workspaces/${workspaceId}/documents`);
@@ -17,3 +17,12 @@ export const importSo = (workspaceId: string, url: string) =>
 
 export const deleteDocument = (workspaceId: string, documentId: string) =>
   apiClient.delete(`/api/workspaces/${workspaceId}/documents/${documentId}`);
+
+export const getDocument = (workspaceId: string, docId: string) =>
+  apiClient.get<Document>(`/api/workspaces/${workspaceId}/documents/${docId}`);
+
+export const retryDocument = (workspaceId: string, docId: string) =>
+  apiClient.post<Document>(`/api/workspaces/${workspaceId}/documents/${docId}/retry`);
+
+export const getTask = (taskId: string) =>
+  apiClient.get<Task>(`/api/tasks/${taskId}`);
