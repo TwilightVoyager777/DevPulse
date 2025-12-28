@@ -7,7 +7,12 @@ from app.config import get_settings
 from app.models.schemas import AiTaskEvent
 from app.services.ai_service import process_ai_task
 from app.utils.metrics import KAFKA_MESSAGES_CONSUMED_TOTAL
-from app.utils.redis_client import is_event_processed, mark_event_processed
+from app.utils.redis_client import (
+    is_event_processed,
+    mark_event_processed,
+    acquire_event_lock,
+    release_event_lock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +74,21 @@ class AiTaskConsumer:
                 self._consumer.commit(msg)
                 return
 
-            logger.info("Processing AI task %s (session=%s)", task_id, event.sessionId)
-            await process_ai_task(event)
-            await mark_event_processed(task_id)
+            # Distributed lock: prevent concurrent processing
+            locked = await acquire_event_lock(task_id)
+            if not locked:
+                logger.debug("AI task %s already locked by another instance, skipping", task_id)
+                self._consumer.commit(msg)
+                return
 
-            KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="success").inc()
+            try:
+                logger.info("Processing AI task %s (session=%s)", task_id, event.sessionId)
+                await process_ai_task(event)
+                await mark_event_processed(task_id)
+                KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="success").inc()
+            finally:
+                await release_event_lock(task_id)
+
             self._consumer.commit(msg)
 
         except Exception as e:

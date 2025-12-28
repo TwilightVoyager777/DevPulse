@@ -69,6 +69,19 @@ async def is_event_processed(task_id: str) -> bool:
     return await r.exists(f"processed:event:{task_id}") == 1
 
 
+async def acquire_event_lock(event_id: str, ttl: int = 30) -> bool:
+    """Try to acquire a distributed processing lock for an event (SET NX, TTL 30s)."""
+    r = await get_redis()
+    result = await r.set(f"processing:event:{event_id}", "1", nx=True, ex=ttl)
+    return result is True
+
+
+async def release_event_lock(event_id: str) -> None:
+    """Release the event processing distributed lock."""
+    r = await get_redis()
+    await r.delete(f"processing:event:{event_id}")
+
+
 async def save_bm25_to_redis(workspace_id: str, data: bytes) -> None:
     """Persist BM25 pickle bytes to Redis with 24h TTL."""
     r = await get_raw_redis()

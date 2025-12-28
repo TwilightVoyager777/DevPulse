@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { Message } from "@/lib/types";
 import { StreamingMessage } from "./StreamingMessage";
 import { cn } from "@/lib/cn";
@@ -48,7 +52,36 @@ export function MessageList({ messages, streamingContent }: MessageListProps) {
                 : "bg-gray-800 text-gray-100"
             )}
           >
-            <p className="whitespace-pre-wrap">{msg.content}</p>
+            {msg.role === "user" ? (
+              <p className="whitespace-pre-wrap">{msg.content}</p>
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                className="prose prose-invert prose-sm max-w-none"
+                components={{
+                  code({ node, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    const isBlock = !props.inline;
+                    return isBlock && match ? (
+                      <SyntaxHighlighter
+                        style={oneDark as any}
+                        language={match[1]}
+                        PreTag="div"
+                        customStyle={{ borderRadius: "0.5rem", fontSize: "0.8rem" }}
+                      >
+                        {String(children).replace(/\n$/, "")}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className="rounded bg-gray-700 px-1 py-0.5 font-mono text-xs" {...props}>
+                        {children}
+                      </code>
+                    );
+                  },
+                }}
+              >
+                {msg.content}
+              </ReactMarkdown>
+            )}
             {msg.sources && msg.sources.length > 0 && (
               <div className="mt-2 border-t border-gray-700 pt-2">
                 <p className="text-xs text-gray-500 mb-1">Sources:</p>

@@ -8,10 +8,11 @@ import { listDocuments, uploadDocument, deleteDocument } from "@/lib/api/documen
 import { SessionSidebar } from "@/components/chat/SessionSidebar";
 import { MessageList } from "@/components/chat/MessageList";
 import { MessageInput } from "@/components/chat/MessageInput";
+import { SourcesPanel } from "@/components/chat/SourcesPanel";
 import { DocumentList } from "@/components/document/DocumentList";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/hooks/useChat";
-import { ChatSession, Document } from "@/lib/types";
+import { ChatSession, Document, SourceInfo } from "@/lib/types";
 
 type Panel = "chat" | "docs";
 
@@ -21,6 +22,8 @@ export default function WorkspacePage() {
 
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [panel, setPanel] = useState<Panel>("chat");
+  const [sourcesOpen, setSourcesOpen] = useState(true);
+  const [currentSources, setCurrentSources] = useState<SourceInfo[]>([]);
 
   const { data: sessions, mutate: mutateSessions } = useSWR(
     `/sessions/${workspaceId}`,
@@ -34,6 +37,14 @@ export default function WorkspacePage() {
 
   const { messages, streamingContent, sending, streaming, loadMessages, send } =
     useChat(workspaceId, activeSession?.id ?? null);
+
+  // Update sources panel when a new assistant message arrives
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role === "assistant" && lastMsg.sources && lastMsg.sources.length > 0) {
+      setCurrentSources(lastMsg.sources);
+    }
+  }, [messages]);
 
   // Auto-select first session
   useEffect(() => {
@@ -118,9 +129,16 @@ export default function WorkspacePage() {
 
         {panel === "chat" ? (
           activeSession ? (
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <MessageList messages={messages} streamingContent={streamingContent} />
-              <MessageInput onSend={send} disabled={sending || streaming} />
+            <div className="flex flex-1 overflow-hidden">
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <MessageList messages={messages} streamingContent={streamingContent} />
+                <MessageInput onSend={send} disabled={sending || streaming} />
+              </div>
+              <SourcesPanel
+                sources={currentSources}
+                isOpen={sourcesOpen}
+                onToggle={() => setSourcesOpen((o) => !o)}
+              />
             </div>
           ) : (
             <div className="flex flex-1 items-center justify-center text-gray-600">
