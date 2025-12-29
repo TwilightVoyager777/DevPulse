@@ -64,7 +64,9 @@ async def test_process_ai_task_publishes_done_event(mocker):
     )
 
     # Mock Anthropic streaming
-    mock_stream = AsyncMock()
+    # Use MagicMock for the stream context manager so calling stream(...) returns it directly
+    # (AsyncMock would return a coroutine which can't be used as `async with`)
+    mock_stream = MagicMock()
     mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
     mock_stream.__aexit__ = AsyncMock(return_value=None)
 
@@ -78,8 +80,8 @@ async def test_process_ai_task_publishes_done_event(mocker):
     mock_final.usage.output_tokens = 20
     mock_stream.get_final_message = AsyncMock(return_value=mock_final)
 
-    mock_client = AsyncMock()
-    mock_client.messages.stream.return_value = mock_stream
+    mock_client = MagicMock()
+    mock_client.messages.stream = MagicMock(return_value=mock_stream)
 
     mocker.patch("app.services.ai_service.anthropic.AsyncAnthropic", return_value=mock_client)
 

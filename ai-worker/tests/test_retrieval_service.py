@@ -46,6 +46,7 @@ def test_rrf_fusion_bm25_only():
 @pytest.mark.asyncio
 async def test_hybrid_search_integrates_services(mocker):
     import numpy as np
+    _DOC_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
     mocker.patch(
         "app.services.retrieval_service.embed_query",
         return_value=np.zeros(384, dtype=np.float32),
@@ -53,13 +54,13 @@ async def test_hybrid_search_integrates_services(mocker):
     mocker.patch(
         "app.services.retrieval_service.search_bm25",
         return_value=[
-            {"id": "c1", "content": "Python GIL", "document_id": "d1", "chunk_index": 0}
+            {"id": "c1", "content": "Python GIL", "document_id": _DOC_ID, "chunk_index": 0}
         ],
     )
     mocker.patch(
         "app.services.retrieval_service.vector_search",
         return_value=[
-            {"id": "c1", "content": "Python GIL", "document_id": "d1",
+            {"id": "c1", "content": "Python GIL", "document_id": _DOC_ID,
              "chunk_index": 0, "score": 0.95, "title": "Python Guide"},
         ],
     )

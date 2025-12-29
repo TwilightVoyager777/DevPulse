@@ -60,13 +60,17 @@ async def test_search_bm25_builds_index_if_missing(mocker):
         "app.services.bm25_service.get_chunks_for_workspace",
         new_callable=AsyncMock,
         return_value=[
-            {"id": "1", "document_id": "d1", "content": "Python rocks", "chunk_index": 0}
+            {"id": "1", "document_id": "d1", "content": "Python rocks", "chunk_index": 0},
+            {"id": "2", "document_id": "d1", "content": "Redis is fast", "chunk_index": 1},
+            {"id": "3", "document_id": "d1", "content": "Java uses JVM", "chunk_index": 2},
         ],
     )
     mocker.patch("app.services.bm25_service.save_bm25_index", new_callable=AsyncMock)
     mocker.patch("app.services.bm25_service.load_bm25_index", new_callable=AsyncMock, return_value=None)
     mocker.patch("app.services.bm25_service.load_bm25_from_redis", new_callable=AsyncMock, return_value=None)
     mocker.patch("app.services.bm25_service.save_bm25_to_redis", new_callable=AsyncMock)
+    mocker.patch("app.services.bm25_service.acquire_bm25_lock", new_callable=AsyncMock, return_value=True)
+    mocker.patch("app.services.bm25_service.release_bm25_lock", new_callable=AsyncMock)
     # Clear cache
     import app.services.bm25_service as bm25_mod
     bm25_mod._index_cache.clear()
