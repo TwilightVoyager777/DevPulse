@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
 import { listSessions, createSession, deleteSession } from "@/lib/api/sessions";
-import { listDocuments, uploadDocument, deleteDocument, retryDocument } from "@/lib/api/documents";
+import { listDocuments, uploadDocument, deleteDocument, retryDocument, importSo } from "@/lib/api/documents";
 import { useDocumentPoller } from "@/hooks/useDocumentPoller";
 import { SessionSidebar } from "@/components/chat/SessionSidebar";
 import { MessageList } from "@/components/chat/MessageList";
@@ -114,6 +114,17 @@ export default function WorkspacePage() {
     );
   };
 
+  const handleImportSo = async (url: string) => {
+    const { data: doc } = await importSo(workspaceId, url);
+    mutateDocs((prev: Document[] | undefined) => (prev ? [doc, ...prev] : [doc]), false);
+    startPolling(doc.id, (updated) => {
+      mutateDocs((prev: Document[] | undefined) =>
+        prev ? prev.map((d) => (d.id === updated.id ? updated : d)) : [updated],
+        false
+      );
+    });
+  };
+
   return (
     <div className="flex h-full">
       {/* Session sidebar */}
@@ -183,6 +194,7 @@ export default function WorkspacePage() {
             onUpload={handleUpload}
             onDelete={handleDeleteDoc}
             onRetry={handleRetry}
+            onImportSo={handleImportSo}
           />
         )}
       </div>

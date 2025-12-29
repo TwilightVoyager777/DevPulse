@@ -1,32 +1,71 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Document } from "@/lib/types";
 import { StatusBadge } from "@/components/ui/Badge";
 import { UploadDocumentButton } from "./UploadDocumentButton";
 import { ImportSoModal } from "./ImportSoModal";
 import { Button } from "@/components/ui/Button";
-import { importSo } from "@/lib/api/documents";
 
 interface DocumentListProps {
   documents: Document[];
   onUpload: (file: File) => Promise<void>;
   onDelete: (docId: string) => Promise<void>;
   onRetry: (docId: string) => Promise<void>;
+  onImportSo: (url: string) => Promise<void>;
 }
 
-export function DocumentList({ documents, onUpload, onDelete, onRetry }: DocumentListProps) {
+export function DocumentList({ documents, onUpload, onDelete, onRetry, onImportSo }: DocumentListProps) {
   const [showImport, setShowImport] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragCounter = useRef(0);
 
-  const handleImport = async (url: string) => {
-    // Called by ImportSoModal — parent page owns the workspace context
-    // This component doesn't have workspaceId, so we emit via onUpload pattern
-    // The modal closes itself; parent should handle via prop if needed
-    setShowImport(false);
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) setDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const allowed = [".txt", ".md", ".pdf"];
+    const ext = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!allowed.includes(ext)) return;
+    await onUpload(file);
   };
 
   return (
-    <div className="flex flex-col gap-4 overflow-y-auto p-6">
+    <div
+      className={`relative flex flex-col gap-4 overflow-y-auto p-6 transition-colors ${
+        dragging ? "bg-brand-950/40 ring-2 ring-inset ring-brand-600" : ""
+      }`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-brand-500 bg-gray-950/70">
+          <p className="text-lg font-medium text-brand-400">Drop file to upload</p>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <UploadDocumentButton onUpload={onUpload} />
         <Button variant="secondary" size="sm" onClick={() => setShowImport(true)}>
@@ -36,7 +75,7 @@ export function DocumentList({ documents, onUpload, onDelete, onRetry }: Documen
 
       {documents.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-700 py-16 text-center text-gray-500">
-          No documents yet. Upload a file or import from Stack Overflow.
+          No documents yet. Upload a file, drag &amp; drop here, or import from Stack Overflow.
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -84,7 +123,7 @@ export function DocumentList({ documents, onUpload, onDelete, onRetry }: Documen
       <ImportSoModal
         open={showImport}
         onClose={() => setShowImport(false)}
-        onImport={handleImport}
+        onImport={onImportSo}
       />
     </div>
   );
