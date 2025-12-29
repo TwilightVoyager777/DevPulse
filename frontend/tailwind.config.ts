@@ -10,6 +10,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+      },
       colors: {
         brand: {
           50:  "#f0f4ff",
@@ -19,6 +23,7 @@ const config: Config = {
           600: "#3b57e8",
           700: "#2d44cc",
           900: "#1a2b7a",
+          950: "#0d1640",
         },
       },
     },
