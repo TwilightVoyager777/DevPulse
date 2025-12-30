@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-6"
-    anthropic_max_tokens: int = 2048
+    anthropic_max_tokens: int = 1024
 
     # Embedding
     embedding_model: str = "all-MiniLM-L6-v2"

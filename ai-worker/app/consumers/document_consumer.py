@@ -16,6 +16,8 @@ from app.utils.metrics import (
     KAFKA_MESSAGES_CONSUMED_TOTAL,
 )
 from app.utils.redis_client import is_event_processed, mark_event_processed
+from app.utils.kafka_producer import publish_to_dlq
+from app.utils.db import update_document_status
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +70,12 @@ class DocumentConsumer:
 
     async def _handle_message(self, msg) -> None:
         start = time.time()
+        doc_id: str = ""
+        workspace_id: str = ""
         try:
             event = DocumentIngestionEvent.model_validate_json(msg.value().decode("utf-8"))
             doc_id = str(event.documentId)
+            workspace_id = str(event.workspaceId)
 
             # Idempotency: skip if already processed
             if await is_event_processed(doc_id):
@@ -110,9 +115,19 @@ class DocumentConsumer:
             )
 
         except Exception as e:
-            logger.exception("Failed to process document ingestion after retries: %s", e)
+            error_msg = str(e)
+            logger.exception("Failed to process document ingestion after retries: %s", error_msg)
             INGESTION_DOCUMENTS_TOTAL.labels(status="failed").inc()
             KAFKA_MESSAGES_CONSUMED_TOTAL.labels(topic=TOPIC, status="error").inc()
+
+            # Mark document as FAILED in DB and send to DLQ
+            if doc_id:
+                try:
+                    await update_document_status(doc_id, "FAILED", error_message=error_msg)
+                    publish_to_dlq(doc_id, workspace_id, error_msg)
+                except Exception as dlq_err:
+                    logger.error("Failed to update status / publish DLQ for %s: %s", doc_id, dlq_err)
+
             self._consumer.commit(msg)  # Commit to avoid infinite reprocessing
 
 

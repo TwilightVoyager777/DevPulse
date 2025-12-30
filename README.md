@@ -34,7 +34,7 @@ cp .env.example .env
 # 1. Start infrastructure
 docker compose -f infra/docker-compose.dev.yml up -d
 
-# 2. Start backend (Java 17+ + Gradle required)
+# 2. Start backend (Java 21 + Gradle required)
 cd backend && ./gradlew bootRun
 
 # 3. Start AI Worker (Python 3.11 required)
