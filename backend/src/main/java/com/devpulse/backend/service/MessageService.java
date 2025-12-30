@@ -165,9 +165,23 @@ public class MessageService {
     }
 
     private MessageResponse toResponse(Message m) {
+        List<MessageResponse.SourceInfo> sources = deserializeSources(m.getSources());
         return new MessageResponse(
             m.getId(), m.getRole(), m.getContent(),
-            null,
+            sources,
             m.getTokensUsed(), m.getLatencyMs(), m.getCreatedAt());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<MessageResponse.SourceInfo> deserializeSources(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            var type = new ObjectMapper().getTypeFactory()
+                .constructCollectionType(List.class, MessageResponse.SourceInfo.class);
+            return new ObjectMapper().readValue(json, type);
+        } catch (Exception e) {
+            log.warn("Failed to deserialize sources: {}", e.getMessage());
+            return null;
+        }
     }
 }

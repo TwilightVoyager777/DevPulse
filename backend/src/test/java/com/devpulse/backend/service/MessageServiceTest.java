@@ -131,6 +131,31 @@ class MessageServiceTest {
         assertThat(history).hasSize(2);
         assertThat(history.get(0).role()).isEqualTo("user");
         assertThat(history.get(1).role()).isEqualTo("assistant");
+        assertThat(history.get(0).sources()).isNull();  // no sources on user message
+    }
+
+    @Test
+    void getHistory_deserializesSources_whenPresent() {
+        UUID sessionId   = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        UUID docId       = UUID.randomUUID();
+
+        when(sessionRepository.findByIdAndWorkspaceId(sessionId, workspaceId))
+            .thenReturn(Optional.of(mockSession(sessionId, workspaceId, UUID.randomUUID())));
+
+        String sourcesJson = "[{\"title\":\"Guide\",\"score\":0.85,\"snippet\":\"Short snippet\"," +
+            "\"documentId\":\"" + docId + "\"}]";
+        Message m = Message.builder().id(UUID.randomUUID()).sessionId(sessionId)
+            .role("assistant").content("Answer").sources(sourcesJson).build();
+        when(messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+            .thenReturn(List.of(m));
+
+        List<MessageResponse> history = messageService.getHistory(workspaceId, sessionId);
+
+        assertThat(history.get(0).sources()).hasSize(1);
+        assertThat(history.get(0).sources().get(0).title()).isEqualTo("Guide");
+        assertThat(history.get(0).sources().get(0).score()).isEqualTo(0.85);
+        assertThat(history.get(0).sources().get(0).documentId()).isEqualTo(docId);
     }
 
     @Test
