@@ -12,7 +12,7 @@ version = '0.0.1-SNAPSHOT'
 ext['flyway.version'] = '10.10.0'
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_17
 }
 
 configurations {
