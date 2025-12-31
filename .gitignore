@@ -49,3 +49,4 @@ logs/
 htmlcov/
 frontend/coverage/
 backend/build/reports/
+.keys/
