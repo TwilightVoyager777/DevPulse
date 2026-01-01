@@ -4,7 +4,7 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql://devpulse:devpulse@localhost:5432/devpulse"
+    database_url: str = "postgresql://devpulse:devpulse_secret@localhost:5432/devpulse"
 
     # Redis
     redis_host: str = "localhost"
