@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     doc_task = asyncio.create_task(doc_consumer.start())
     ai_task = asyncio.create_task(ai_consumer.start())
 
-    APP_INFO.labels(version="1.0.0").set(1)
+    APP_INFO.info({"version": "1.0.0"})
     logger.info("AI Worker ready")
 
     yield
