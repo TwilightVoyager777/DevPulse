@@ -8,9 +8,9 @@ export interface User {
 export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
-  tokenType: string;
-  expiresIn: number;
-  user: User;
+  userId: string;
+  email: string;
+  displayName: string;
 }
 
 export interface Workspace {
